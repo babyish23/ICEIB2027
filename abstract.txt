@@ -1,0 +1,9 @@
+Abstract—Pre-trip hiking decisions require the integration of heterogeneous risk information and the verification of safety constraints. Information retrieval alone is insufficient to ensure the traceability and feasibility of generated recommendations. This study proposes TrailGuard TW, a hiking decision-support agent that integrates a large language model (LLM) with an analytical engine. The proposed architecture combines a temporal knowledge graph with hybrid retrieval-augmented generation. The LLM performs requirement interpretation and tool orchestration, whereas a Python-based engine verifies numerical calculations and itinerary constraints. The system generates candidate itineraries, risk summaries, and retreat plans. Evidence tracking and safety gates are incorporated to block recommendations when official closures apply and to request clarification when critical evidence is insufficient. An evaluation involving 120 core and adversarial scenarios is planned to assess constraint satisfaction, numerical traceability, and the false-safe rate, defined as the proportion of unsafe cases incorrectly approved. The expected contribution is a verifiable, safety-constrained architecture and evaluation framework for domain-specific agents. Its effectiveness remains subject to experimental validation, and no reduction in hiking accidents is claimed at the proposal stage
+
+
+
+
+
+
+
+

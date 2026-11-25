@@ -1,0 +1,527 @@
+\documentclass[conference]{IEEEtran}
+
+\usepackage{amsmath,amssymb}
+\usepackage{cite}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{textcomp}
+\usepackage{xcolor}
+\usepackage{url}
+\usepackage{array}
+
+\title{TrailGuard TW: A Verifiable, Safety-Constrained Agent for Pre-Trip Hiking Decision Support}
+
+\author{
+\IEEEauthorblockN{First Author, Second Author, and Third Author}
+\IEEEauthorblockA{
+\textit{Department or Institute Name}\\
+\textit{University or Organization Name}\\
+City, Country\\
+\{author1, author2, author3\}@example.edu}
+}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+Pre-trip hiking decisions require the integration of heterogeneous risk
+information and the verification of safety constraints. Information retrieval
+alone is insufficient to ensure the traceability and feasibility of generated
+recommendations. This study proposes TrailGuard TW, a hiking decision-support
+agent that integrates a large language model (LLM) with an analytical engine.
+The proposed architecture combines a temporal knowledge graph with hybrid
+retrieval-augmented generation. The LLM performs requirement interpretation
+and tool orchestration, whereas a Python-based engine verifies numerical
+calculations and itinerary constraints. The system generates candidate
+itineraries, risk summaries, and retreat plans. Evidence tracking and safety
+gates are incorporated to block recommendations when official closures apply
+and to request clarification when critical evidence is insufficient. An
+evaluation involving 120 core and adversarial scenarios is planned to assess
+constraint satisfaction, numerical traceability, and the false-safe rate,
+defined as the proportion of unsafe cases incorrectly approved. The expected
+contribution is a verifiable, safety-constrained architecture and evaluation
+framework for domain-specific agents. Its effectiveness remains subject to
+experimental validation, and no reduction in hiking accidents is claimed at
+the proposal stage.
+\end{abstract}
+
+\begin{IEEEkeywords}
+large language models, hiking safety, decision support, retrieval-augmented
+generation, temporal knowledge graphs, constraint verification
+\end{IEEEkeywords}
+
+\section{Introduction}
+\label{sec:introduction}
+Hiking safety is a decision problem rather than an information-access problem.
+Before departure, a self-organized team must reconcile route distance and
+elevation, expected walking time, weather forecasts, water availability,
+official closures, participant capability, and altitude-illness guidance.
+These data are maintained by different organizations, updated at different
+times, and expressed in incompatible formats. A plausible answer assembled
+from stale or unsupported facts may therefore be more dangerous than an
+explicit refusal to recommend a route.
+
+The problem is material in Taiwan. According to the Ministry of the Interior
+(MOI), 3,450 mountain incidents occurred from 2015 through 2024; 1,263
+incidents (approximately 37\%) involved people becoming lost~\cite{moi2025}.
+The same report recommends offline maps, satellite positioning equipment, and
+a trip-monitoring mechanism. These measures are useful after a route has been
+selected, but self-organized teams also need support while deciding whether a
+trip is feasible in the first place. A separate MOI analysis reports that
+self-organized groups without a professional leader represented 60.1\% of the
+interviewed incident cases~\cite{moi2025summer}. These figures motivate a
+system that exposes evidence and uncertainty instead of merely producing
+fluent advice.
+
+Large language models (LLMs) can interpret informal requirements and summarize
+heterogeneous documents, while retrieval-augmented generation (RAG) can ground
+responses in external sources~\cite{lewis2020rag}. Nevertheless, an LLM is not
+a dependable calculator or safety authority. Conventional chat assistants may
+mix dated notices with current forecasts, repeat an unsupported number, or
+recommend an attractive itinerary despite a hard closure. General map
+applications, in contrast, are effective for navigation but normally do not
+perform evidence-level auditing, participant-specific feasibility checks, or
+false-safe evaluation.
+
+This paper proposes \emph{TrailGuard TW}, a domain AI agent for pre-trip hiking
+decision support in Taiwan. Its design follows one governing rule:
+\emph{no source, no number}. The LLM interprets requirements, plans tool calls,
+and explains results; a deterministic Python engine computes route quantities,
+tests constraints, and enforces safety gates. A temporal knowledge graph (TKG)
+and hybrid RAG layer preserve the validity period and provenance of evidence.
+When an official closure or route-relevant severe-weather red flag applies, the
+system returns \textsc{no-go}. When critical facts are missing or conflicting,
+it requests clarification rather than silently filling gaps.
+
+The contributions of this work are threefold:
+\begin{itemize}
+    \item a safety-first, dual-core architecture that separates linguistic
+    planning from deterministic verification;
+    \item an evidence ledger and temporal retrieval design that make numerical
+    claims and safety decisions auditable; and
+    \item an evaluation framework containing 90 core and 30
+    stress/adversarial scenarios, with constraint satisfaction, evidence
+    grounding, and false-safe rate as primary metrics.
+\end{itemize}
+The present work is a system proposal and evaluation protocol. It does not
+claim that TrailGuard TW reduces real-world accident rates.
+
+\section{Related Work}
+\label{sec:related-work}
+\subsection{LLM Agents and Grounded Generation}
+RAG combines parametric generation with retrieved non-parametric memory and
+improves knowledge-intensive generation while enabling provenance
+inspection~\cite{lewis2020rag}. ReAct interleaves reasoning and external
+actions, allowing an LLM to update a plan from tool observations
+~\cite{yao2023react}. Toolformer further demonstrates that language models can
+learn when and how to invoke calculators, search systems, and other
+APIs~\cite{schick2023toolformer}. These methods support TrailGuard TW's use of
+an LLM as an orchestrator rather than a self-contained source of facts.
+
+Grounding alone does not guarantee safe output. Fixed retrieval may return
+irrelevant evidence, and a generator can still make claims unsupported by the
+retrieved passages. Self-RAG addresses related problems through adaptive
+retrieval and self-reflection~\cite{asai2024selfrag}. TrailGuard TW adopts the
+same broad objective of evidence-aware generation, but moves acceptance of
+numerical and hard-safety claims outside the LLM. A deterministic validator
+must approve such claims before they can appear in the final decision pack.
+
+\subsection{Temporal Knowledge and Hybrid Retrieval}
+Trail conditions, closures, forecasts, and water reports are time-dependent.
+A document that was reliable yesterday may be invalid for the planned travel
+window. TimeR$^4$ shows that explicit temporal constraints in retrieval and
+reranking can improve temporal knowledge-graph question answering
+~\cite{qian2024timer4}. TrailGuard TW therefore stores both \emph{valid time}
+(when a fact applies in the world) and \emph{transaction time} (when the
+system observed it). Sparse keyword retrieval is used for exact route names,
+notice identifiers, and warnings, whereas dense retrieval captures semantic
+similarity. TKG traversal then connects routes to segments, authorities,
+weather regions, water points, and retreat locations.
+
+\subsection{Hiking-Time and Altitude-Risk Knowledge}
+Traditional route-time estimates use horizontal distance and ascent. Tobler's
+hiking function models speed as a function of slope~\cite{tobler1993}, while
+recent analysis of nearly 88,000~km of GPS tracks found that terrain gradient,
+surface, and obstruction are also important~\cite{wood2023}. The same study
+reports substantial route-level error across common models, so TrailGuard TW
+treats computed time as an estimate with an uncertainty margin rather than a
+guarantee.
+
+For altitude risk, the Wilderness Medical Society guideline states that
+unacclimatized travelers are at risk above 2,500~m, while susceptible
+individuals may develop illness at lower elevations~\cite{luks2019}. Such
+guidance cannot be reduced to a universal medical diagnosis. The proposed
+agent therefore provides conservative prompts, recommends descent when
+warning symptoms are reported, and directs users to professional or emergency
+services. It does not diagnose or prescribe.
+
+\begin{table*}[t]
+\caption{Comparison of representative approaches with the proposed design.}
+\label{tab:related}
+\centering
+\small
+\begin{tabular}{p{2.6cm}ccccc}
+\toprule
+Approach & External evidence & Temporal validity & Deterministic arithmetic &
+Hard safety gate & Claim-level provenance \\
+\midrule
+General LLM chat & Optional & No & No & No & No \\
+Conventional RAG~\cite{lewis2020rag} & Yes & Limited & No & No & Partial \\
+Tool-using agent~\cite{yao2023react,schick2023toolformer} & Yes & Tool-dependent &
+Optional & Optional & Partial \\
+General map application & Map data & Limited & Yes & Limited & Limited \\
+TrailGuard TW & Yes & Yes & Yes & Yes & Yes \\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+\section{Proposed TrailGuard TW Agent}
+\label{sec:architecture}
+\subsection{Problem Formulation}
+Let a trip request be
+\begin{equation}
+C=\langle r,d,G,t_{\max},E_{\max},w,p,q\rangle,
+\end{equation}
+where $r$ is the target route or area, $d$ is the travel window, $G$ is the
+participant profile, $t_{\max}$ is the available time, $E_{\max}$ is the
+acceptable elevation or effort, $w$ describes weather tolerance, $p$ contains
+preferences, and $q$ is the evidence cutoff time. Missing critical values are
+explicitly represented as unknown.
+
+The output is either a decision pack
+$P=\{I_1,I_2,I_3,D,R,O,L\}$ or a terminal safety state. Here, $I_1$--$I_3$ are
+ranked candidate itineraries, $D$ is a risk dashboard, $R$ contains retreat
+points and turn-around rules, $O$ is the evidence ledger, and $L$ is an
+offline emergency card. Terminal states are \textsc{no-go} for a verified
+hard red flag and \textsc{needs-clarification} for insufficient critical
+evidence. Producing fewer than three candidates is permitted when only one or
+two satisfy all hard constraints.
+
+\subsection{Dual-Core Architecture}
+Figure~\ref{fig:architecture} presents the architecture. The language core
+normalizes a user's natural-language request, identifies missing constraints,
+selects retrieval and analysis tools, and renders a plain-language
+explanation. It is prohibited from directly approving a route or creating an
+unverified number. The analytical core receives typed data, computes
+distance, ascent, time, daylight margin, and resource margins, and returns
+machine-readable pass/fail results.
+
+\subsection{Temporal Knowledge Graph}
+The TKG contains nodes for routes, route segments, trailheads, peaks, shelters,
+water points, retreat points, administrative regions, authorities, notices,
+forecasts, hazards, and medical guidance. Relations include
+\texttt{PART\_OF}, \texttt{CONNECTS}, \texttt{MANAGED\_BY},
+\texttt{AFFECTS}, \texttt{HAS\_WATER}, and \texttt{RETREATS\_TO}. Every
+volatile assertion stores source URI, publisher, retrieval time, valid-from,
+valid-to, geographic scope, and extraction confidence.
+
+Conflicting claims are not merged into a single value. They remain separate
+evidence records and are ranked by authority, recency, geographic
+specificity, and directness. Official closure notices dominate community
+reports. A community water report may add useful context, but it cannot
+override an official prohibition.
+
+\subsection{Hybrid Retrieval-Augmented Generation}
+The retriever issues parallel sparse, dense, and graph queries. A reciprocal
+rank fusion stage combines candidate documents, after which temporal and
+geographic filters remove evidence that does not apply to $(r,d)$. The final
+score for evidence item $e$ is
+\begin{equation}
+S(e)=\alpha S_{\mathrm{lex}}+\beta S_{\mathrm{dense}}+
+\gamma S_{\mathrm{graph}}+\delta S_{\mathrm{time}}+
+\eta S_{\mathrm{authority}},
+\label{eq:retrieval}
+\end{equation}
+where weights are tuned only on a development partition. Hard-safety evidence
+must come from an allow-listed authoritative source. Candidate sources include
+the National Park Service, the Forestry and Nature Conservation Agency,
+local governments, the Central Weather Administration, and formal medical
+guidelines.
+
+The evidence ledger links each output claim to one or more evidence IDs.
+Numerical claims additionally store the source fields, transformation,
+formula, units, and computed value. If this chain cannot be constructed, the
+claim is blocked under the ``no source, no number'' policy.
+
+\subsection{Analytical Engine and Safety Gates}
+Each route is decomposed into directed segments. For segment $j$ with slope
+$s_j$ and length $\ell_j$, a baseline walking speed is computed with Tobler's
+function,
+\begin{equation}
+v_j=6\exp(-3.5|s_j+0.05|),
+\end{equation}
+and adjusted by transparent factors for surface, obstruction, group profile,
+load, and uncertainty. Total predicted time is
+\begin{equation}
+\hat{T}=\sum_j\frac{\ell_j}{v_j a_j}+T_{\mathrm{rest}}+T_{\mathrm{buffer}},
+\label{eq:time}
+\end{equation}
+where $0<a_j\leq1$ is the documented adjustment factor. The engine retains
+both the baseline and adjusted result so that a reviewer can reproduce the
+calculation.
+
+Hard constraints include an applicable official closure, a route-region
+typhoon or severe-weather prohibition, an impossible daylight margin, or a
+required permit known to be unavailable. A verified hard constraint causes
+\textsc{no-go} before itinerary generation. Soft risks, such as uncertain
+water availability or a narrow time buffer, lower the candidate score and
+trigger warnings. Unknown closure status, missing travel date, or unresolved
+source conflict causes \textsc{needs-clarification}, not approval.
+
+\begin{figure*}[t]
+    \centering
+    \resizebox{0.98\textwidth}{!}{%
+    \begin{tabular}{c@{\ $\rightarrow$\ }c@{\ $\rightarrow$\ }c@{\ $\rightarrow$\ }c}
+    \fbox{\strut User constraints} &
+    \fbox{\strut LLM planner and tool orchestrator} &
+    \fbox{\strut Hybrid RAG + temporal KG} &
+    \fbox{\strut Evidence ledger} \\[3mm]
+    & \multicolumn{1}{c}{$\downarrow$} & \multicolumn{1}{c}{$\downarrow$} & \\[-1mm]
+    \fbox{\strut Decision pack / \textsc{no-go}} &
+    \fbox{\strut Explanation and presentation} &
+    \fbox{\strut Python verifier + safety gates} &
+    \fbox{\strut Typed route and hazard data}
+    \end{tabular}}
+    \caption{Overview of the TrailGuard TW architecture.}
+    \label{fig:architecture}
+\end{figure*}
+
+\subsection{Decision Procedure}
+\begin{table}[t]
+\caption{Safety-first decision procedure.}
+\label{tab:algorithm}
+\centering
+\small
+\begin{tabular}{r p{0.82\columnwidth}}
+\toprule
+1 & Parse request $C$ and validate required fields.\\
+2 & Retrieve authoritative closure and severe-weather evidence.\\
+3 & If an applicable hard red flag is verified, return \textsc{no-go}.\\
+4 & Retrieve route, water, medical, and forecast evidence using hybrid RAG
+and TKG traversal.\\
+5 & Reject expired, out-of-scope, or provenance-free evidence.\\
+6 & Use the Python engine to compute route quantities and constraints.\\
+7 & If critical evidence is missing or conflicting, return
+\textsc{needs-clarification}.\\
+8 & Rank feasible itineraries and select at most three diverse candidates.\\
+9 & Attach dashboard, retreat plan, evidence ledger, and offline card.\\
+10 & Run a final claim-to-evidence audit and return $P$.\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Evaluation Methodology}
+\label{sec:methodology}
+\subsection{Research Questions}
+The evaluation addresses four questions: (RQ1) Does deterministic verification
+increase hard-constraint satisfaction? (RQ2) Does temporal, provenance-aware
+retrieval increase the proportion of grounded numerical claims? (RQ3) Does
+the safety gate reduce false approvals under adversarial or incomplete input?
+(RQ4) Can these gains be achieved with acceptable latency and usability?
+
+\subsection{Scenario Suite}
+The planned suite contains 120 scenarios. Ninety core scenarios use ordinary
+combinations of one-day and multi-day routes, seasons, participant profiles,
+time budgets, elevation gains, water conditions, and permit states. Thirty
+stress/adversarial scenarios target stale closure notices, same-name routes,
+contradictory water reports, prompt injection inside retrieved text, unit
+confusion, missing dates, unrealistic speed requests, typhoon overlap, and
+symptoms compatible with altitude illness.
+
+Each scenario is labeled independently by two reviewers with the expected
+decision state, applicable hard constraints, required evidence, and acceptable
+numeric ranges. Disagreement is resolved by a third reviewer. Scenario
+templates are frozen before the final evaluation. To reduce information
+leakage, retrieval-weight tuning uses only a separate development set.
+
+\subsection{Baselines and Ablations}
+Three primary systems are compared: (B1) a chat-only LLM with no retrieval or
+calculator; (B2) vector RAG with the same LLM and document corpus but no
+temporal graph or deterministic gate; and (B3) full TrailGuard TW. Ablations
+remove the temporal filter, evidence ledger, or Python verifier one at a time.
+All systems receive identical scenario text and a common output schema.
+Temperature, token budget, and maximum tool calls are fixed. Each stochastic
+condition is repeated with predefined seeds, while deterministic calculations
+are executed once per retrieved evidence set.
+
+\subsection{Evaluation Metrics}
+Constraint satisfaction rate (CSR) is the proportion of scenarios in which
+all applicable hard constraints are satisfied:
+\begin{equation}
+\mathrm{CSR}=\frac{\sum_i \mathbb{1}[\text{all hard constraints pass in }i]}
+{N}.
+\end{equation}
+Evidence grounding rate (EGR) is
+\begin{equation}
+\mathrm{EGR}=\frac{N_{\mathrm{verified\ numeric\ claims}}}
+{N_{\mathrm{numeric\ claims}}}.
+\end{equation}
+The primary safety metric is false-safe rate (FSR):
+\begin{equation}
+ \mathrm{FSR}=\frac{N_{\mathrm{unsafe\ approved}}}
+ {N_{\mathrm{unsafe\ cases}}}.
+    \label{eq:fsr}
+\end{equation}
+Here, an unsafe approval occurs when a system recommends proceeding despite a
+gold-label hard red flag. A refusal caused by insufficient evidence is not a
+false-safe, but excessive refusal is reported separately as the abstention
+rate.
+
+Walking-time accuracy is measured by relative mean absolute error,
+\begin{equation}
+\mathrm{rMAE}=\frac{100}{N}\sum_i
+\frac{|\hat{T}_i-T_i|}{T_i},
+\end{equation}
+using completed-track duration where ethically and operationally available.
+Secondary targets are expert acceptance of at least 4.0/5, System Usability
+Scale (SUS)~\cite{brooke1996} of at least 75, and end-to-end P95 latency no
+greater than 60~s. Proposal targets are CSR $\geq85\%$, EGR $\geq95\%$, FSR
+$\leq2\%$, and rMAE $\leq20\%$. These thresholds are acceptance criteria, not
+observed results.
+
+\begin{table}[t]
+\caption{Planned acceptance criteria and result fields.}
+    \label{tab:results}
+    \centering
+    \small
+    \begin{tabular}{lcc}
+        \toprule
+        Metric & Target & Observed \\
+        \midrule
+        CSR & $\geq85\%$ & pending \\
+        EGR & $\geq95\%$ & pending \\
+        False-safe rate & $\leq2\%$ & pending \\
+        Walking-time rMAE & $\leq20\%$ & pending \\
+        Expert acceptance & $\geq4.0/5$ & pending \\
+        SUS & $\geq75$ & pending \\
+        P95 latency & $\leq60$ s & pending \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+\subsection{Analysis Plan}
+CSR, EGR, FSR, and abstention are reported with 95\% bootstrap confidence
+intervals. Paired binary outcomes are compared with McNemar's test; continuous
+errors are compared with paired bootstrap differences because their
+distribution may be non-normal. Core and adversarial subsets are reported
+separately. Failure analysis classifies errors as retrieval, temporal scope,
+entity resolution, arithmetic, policy, orchestration, or presentation errors.
+
+\section{Expected Results and Discussion}
+\label{sec:results}
+No empirical measurements are available at the proposal stage; consequently,
+Table~\ref{tab:results} deliberately reports pending values. The main
+hypothesis is not that an LLM becomes intrinsically safer, but that system
+boundaries prevent it from being the final authority for arithmetic and
+hard-safety decisions. The largest expected gains over vector RAG are in
+stale-notice and unsupported-number cases. Removing the temporal filter should
+mainly degrade decisions involving changing closures or forecasts, while
+removing the verifier should mainly reduce CSR and numerical traceability.
+
+The design has explicit trade-offs. First, conservative abstention may prevent
+a useful recommendation when evidence is merely delayed. This cost is visible
+through the abstention rate and should not be hidden by optimizing FSR alone.
+Second, authority and recency do not always imply completeness; local trail
+conditions may be reported first by the community. The ledger therefore
+retains lower-tier evidence as context but does not let it override official
+restrictions. Third, route-time models cannot fully represent fatigue,
+technical terrain, load, or individual pace. TrailGuard TW exposes assumptions
+and buffers rather than presenting a single estimate as certainty.
+
+\subsection{Threats to Validity}
+Scenario labels may reflect reviewer judgment, and 120 cases cannot cover
+Taiwan's full route and weather diversity. Data-source availability and page
+formats can change after deployment. Expert acceptance does not prove reduced
+injury, and laboratory adversarial prompts may not match field behavior.
+Finally, the selected LLM and retrieval corpus may limit generalizability.
+Mitigations include published scenario definitions, versioned evidence,
+inter-rater agreement reporting, repeated model runs, ablations, and a clear
+separation between system-quality metrics and real-world safety outcomes.
+
+\section{Conclusion}
+\label{sec:conclusion}
+TrailGuard TW is a proposed safety-constrained domain agent for pre-trip hiking
+decisions. It combines an LLM planner, hybrid RAG, a temporal knowledge graph,
+a deterministic analytical engine, and claim-level evidence tracking. The
+architecture places closure and severe-weather checks before recommendation
+generation and converts missing critical evidence into abstention or a request
+for clarification. Its output is a usable decision pack containing up to three
+candidate itineraries, a risk dashboard, retreat rules, an evidence ledger,
+and an offline emergency card.
+
+The planned 120-scenario evaluation emphasizes false-safe rate, hard-constraint
+satisfaction, and numerical traceability in addition to usability and latency.
+Future work will implement the data connectors, freeze the scenario suite,
+conduct expert labeling, calibrate route-time uncertainty with Taiwanese GPS
+tracks, and publish measured results. Until those steps are complete, the
+system should be treated as a decision-support prototype rather than a
+substitute for official notices, professional guides, medical advice, or
+personal responsibility.
+
+\begin{thebibliography}{00}
+
+\bibitem{moi2025}
+Ministry of the Interior, Taiwan, ``Lost persons are the largest category of
+recent mountain incidents,'' Feb. 13, 2025. [Online]. Available:
+\url{https://www.moi.gov.tw/News_Content.aspx?n=4&s=325662}. Accessed:
+Nov. 25, 2026.
+
+\bibitem{moi2025summer}
+Ministry of the Interior, Taiwan, ``Strengthening water and mountain activity
+safety,'' Jun. 26, 2025. [Online]. Available:
+\url{https://www.moi.gov.tw/News_Content.aspx?n=4&s=329256}. Accessed:
+Nov. 25, 2026.
+
+\bibitem{lewis2020rag}
+P. Lewis \emph{et al.}, ``Retrieval-augmented generation for
+knowledge-intensive NLP tasks,'' in \emph{Advances in Neural Information
+Processing Systems}, vol. 33, 2020, pp. 9459--9474.
+
+\bibitem{yao2023react}
+S. Yao, J. Zhao, D. Yu, N. Du, I. Shafran, K. Narasimhan, and Y. Cao,
+``ReAct: Synergizing reasoning and acting in language models,'' in
+\emph{Proc. 11th Int. Conf. Learning Representations}, 2023.
+
+\bibitem{schick2023toolformer}
+T. Schick \emph{et al.}, ``Toolformer: Language models can teach themselves
+to use tools,'' in \emph{Advances in Neural Information Processing Systems},
+vol. 36, 2023.
+
+\bibitem{asai2024selfrag}
+A. Asai, Z. Wu, Y. Wang, A. Sil, and H. Hajishirzi, ``Self-RAG: Learning to
+retrieve, generate, and critique through self-reflection,'' in
+\emph{Proc. 12th Int. Conf. Learning Representations}, 2024.
+
+\bibitem{qian2024timer4}
+X. Qian, Y. Zhang, Y. Zhao, B. Zhou, X. Sui, L. Zhang, and K. Song,
+``TimeR$^4$: Time-aware retrieval-augmented large language models for
+temporal knowledge graph question answering,'' in \emph{Proc. 2024 Conf.
+Empirical Methods in Natural Language Processing}, 2024, pp. 6942--6952.
+
+\bibitem{tobler1993}
+W. R. Tobler, ``Non-isotropic geographic modeling,'' in \emph{Three
+Presentations on Geographical Analysis and Modeling}, NCGIA Tech. Rep. 93-1,
+1993.
+
+\bibitem{wood2023}
+A. Wood, W. Mackaness, T. I. Simpson, and J. D. Armstrong, ``Improved
+prediction of hiking speeds using a data driven approach,'' \emph{PLOS ONE},
+vol. 18, no. 12, Art. no. e0295848, 2023,
+doi: 10.1371/journal.pone.0295848.
+
+\bibitem{luks2019}
+A. M. Luks \emph{et al.}, ``Wilderness Medical Society clinical practice
+guidelines for the prevention and treatment of acute altitude illness: 2019
+update,'' \emph{Wilderness Environ. Med.}, vol. 30, no. 4S, pp. S3--S18,
+2019, doi: 10.1016/j.wem.2019.04.006.
+
+\bibitem{brooke1996}
+J. Brooke, ``SUS: A `quick and dirty' usability scale,'' in
+\emph{Usability Evaluation in Industry}, P. W. Jordan, B. Thomas,
+B. A. Weerdmeester, and I. L. McClelland, Eds. London, U.K.: Taylor \&
+Francis, 1996, pp. 189--194.
+
+\end{thebibliography}
+
+\end{document}
